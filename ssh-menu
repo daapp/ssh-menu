@@ -1,0 +1,162 @@
+#! /bin/sh
+# -*- mode: Tcl; -*- \
+exec tclkit "$0" ${1+"$@"}
+
+lappend auto_path /usr/share/tcltk/tcllib1.20 /usr/share/tcltk/tklib0.7
+
+package require Tk
+package require Ttk
+package require msgcat
+namespace import msgcat::mc
+
+package require fileutil
+
+
+set program "ssh-menu"
+set title "ssh ..."
+set version 0.1
+set author "Alexander Danilov <alexander.a.danilov@gmail.com>"
+set url "https://github.com/daapp/ssh-menu"
+
+
+set browser "xdg-open"
+set xtermCommand "xterm -e"
+set sshConfigFile [file join $env(HOME)/.ssh/config]
+set sshCommand autossh
+
+
+msgcat::mcset ru "Connect" "Подключиться"
+msgcat::mcset ru "Exit" "Выйти"
+
+
+proc main {configFile} {
+    set hosts [list]
+    fileutil::foreachLine l $configFile {
+        if {[string match {Host *} $l]} {
+            set name [lindex $l 1]
+            if {$name ne {*}} {
+                lappend hosts $name
+            }
+        }
+    }
+
+    if {[llength $hosts] > 0} {
+        ui $hosts
+    } else {
+        tk_messageBox -type ok -icon error \
+            -parent . -title "No 'Host ' records found in $configFile"
+    }
+}
+
+
+proc ui {hostList} {
+    wm withdraw .
+    wm iconify .
+
+    set font [ttk::style lookup TLabel -font]
+
+    set family [font configure $font -family]
+    set fontSize [list -size [expr {[font configure $font -size] * 3 / 2}]]
+    
+    ttk::frame .title
+    label .title.text -text "$::program v$::version" -font $fontSize
+    button .title.url -text "\u279A" \
+        -relief flat \
+        -font $fontSize \
+        -foreground blue \
+        -activeforeground red \
+        -command goToSite
+    pack .title.text -side left -fill x
+    pack .title.url -side right
+
+
+    ttk::frame .list
+    set hosts [listbox .list.hosts \
+                   -xscrollcommand [list .list.sx set] \
+                   -yscrollcommand [list .list.sy set] \
+                   -height 10]
+    ttk::scrollbar .list.sx -orient vertical -command [list .list xview]
+    ttk::scrollbar .list.sy -orient horizontal -command [list .list yview]
+
+    grid $hosts -sticky nsew
+    grid .list.sx -row 0 -column 1 -sticky ns
+    grid .list.sy -row 1 -column 0 -sticky ew
+    grid rowconfigure .list 0 -weight 1
+    grid columnconfigure .list 0 -weight 1
+
+    ttk::label .cmdline -text "ssh ..." \
+        -relief sunken \
+        -padding 5 \
+        -background black \
+        -foreground lightgreen \
+        -font {-weight bold}
+
+    ttk::frame .buttons
+    ttk::button .buttons.connect \
+        -text [mc "Connect"] \
+        -command [list run $hosts]
+    ttk::button .buttons.exit \
+        -text [mc "Exit"] \
+        -command [list quit]
+
+    grid .buttons.connect .buttons.exit -sticky nsew -padx 10 -pady 10
+    grid columnconfigure .buttons all -weight 1 -uniform a
+
+    pack .title -side top -fill x -padx 10 -pady 10
+    pack .list -fill both -expand true -padx 10 -pady 10
+    pack .cmdline -side top -fill x -padx 10 -pady 10
+    pack .buttons -side bottom -fill x
+
+    bind $hosts <Return> [list run %W]
+    bind $hosts <Double-1> [list run %W]
+    bind $hosts <<ListboxSelect>> [list apply {{w} {
+        set sel [$w curselection]
+        if {[llength $sel]} {
+            .cmdline configure -text "\$ $::sshCommand [$w get $sel]"
+        }
+    }} %W]
+
+    bind . <Escape> quit
+
+    $hosts insert end {*}$hostList
+    $hosts activate 0
+    $hosts selection set 0
+    event generate $hosts <<ListboxSelect>>
+
+    focus $hosts
+
+    set x [expr {([winfo screenwidth . ] - [winfo reqwidth  .])/2}]
+    set y [expr {([winfo screenheight .] - [winfo reqheight .])/2}]
+
+    wm title . $::title
+    wm resizable . 0 0
+
+    wm geometry . +$x+$y
+    wm deiconify .
+    raise .
+}
+
+
+proc quit {} {
+    exit 0
+}
+
+
+proc run {w} {
+    global xtermCommand
+
+    set sel [$w curselection]
+    if {[llength $sel]} {
+        set host [$w get $sel]
+        exec {*}$xtermCommand autossh $host &
+        quit
+    }
+}
+
+
+proc goToSite {} {
+    exec $::browser $::url &
+}
+
+
+main $sshConfigFile
