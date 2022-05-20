@@ -1,8 +1,6 @@
 #! /bin/sh
 # -*- mode: Tcl; -*- \
-exec tclkit "$0" ${1+"$@"}
-
-lappend auto_path /usr/share/tcltk/tcllib1.20 /usr/share/tcltk/tklib0.7
+exec tclsh "$0" ${1+"$@"}
 
 package require Tk
 package require Ttk
